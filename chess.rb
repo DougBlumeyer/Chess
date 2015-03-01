@@ -20,20 +20,19 @@ class Game
   attr_reader :turn_time, :start_pos, :grabbing
 
   PIECE_ROW = [Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook]
+  BOARD_ROWS = ["8", "7", "6", "5", "4", "3", "2", "1"]
 
   def initialize(welcome_flag = false)
     @turn = :white
 
-    @player = { white: HumanPlayer.new, black: ComputerPlayer.new }
+    @successful_move
+
+    @player = { white: HumanPlayer.new(self, :white),
+                black: ComputerPlayer.new(self, :black) }
 
     @board = Board.new(self)
 
     initialize_pieces
-
-    @cursor = [4,4]
-    @start_pos = []
-    @end_pos = []
-    @grabbing = false
 
     @turn_time = 0
     @max_turn_time = 0
@@ -52,12 +51,23 @@ class Game
 
   def play
     until @board.checkmate?(:white) || @board.checkmate?(:black)
-      @board.render
+      render
       @player[@turn].play_turn
       toggle_turn
+      #promotion
     end
 
     puts (@board.checkmate?(:white) ? "black wins!" : "white wins!")
+  end
+
+  def render
+    system("clear")
+    render_timer
+    puts " abcdefgh".colorize(:white)
+    render_grid
+    puts " abcdefgh\n".colorize(:white)
+    puts ( @board.in_check?(@turn) ? "  check!" : "" )
+    print "  #{@turn}"
   end
 
   private
@@ -90,93 +100,50 @@ class Game
     loaded_game.play
   end
 
-  def play_turn
-    @successful_move = false
-    @timer = Time.now.to_i
-    @turn_time = 0
-    until @successful_move
-      if @max_turn_time > 0 && Time.now.to_i > @timer + @turn_time
-        update_timer
-      else
-        wait_for_input
-      end
-    end
+  def render_piece(x,y)
+    piece = @board[[x,y]]
+    piece_str = piece.symbol[piece.color].encode('utf-8')
+    checkerboard(x, y, piece_str)
   end
 
-  def update_timer
-    @turn_time = Time.now.to_i - @timer
-    @board.render
-    if @turn_time > @max_turn_time
-      @turn_time = @max_turn_time
-      puts "\nOUT OF TIME!"
-      exit
-    end
-  end
-
-  def wait_for_input
-    begin
-      input(read_char)
-      @board.render
-    rescue ArgumentError => bad_move
-      puts bad_move.message
-      retry
-    end
-  end
-
-  def toggle_grabbing
-    @grabbing = (@grabbing == true ? false : true)
-  end
-
-  def input(key)
-    case key
-    when "\e[A"
-      @cursor[0] -= 1 if @cursor[0] > 0
-    when "\e[D"
-      @cursor[1] -= 1 if @cursor[1] > 0
-    when "\e[B"
-      @cursor[0] += 1 if @cursor[0] < 7
-    when "\e[C"
-      @cursor[1] += 1 if @cursor[1] < 7
-    when "\r"
-      attempt_action
-    when 's'
-      File.open("chess_#{Time.now}.yml", "w") do |f|
-        f.puts self.to_yaml
-      end
-    when 'l'
-      print "Filename: "
-      File.open(gets.chomp) do |f|
-        loaded_game = YAML.load(f)
-        load_game(loaded_game)
-      end
-    when "\e"
-      exit
+  def render_timer
+    if @max_turn_time == 0
+      print "\n\n"
     else
-      puts key
+      time_left = @max_turn_time - @turn_time
+      print "\n   #{time_left / 60}:"
+      print "0" if time_left % 60 < 10
+      puts "#{time_left % 60} \n\n"
     end
   end
 
-  def attempt_action
-    @grabbing ? @end_pos = @cursor.dup : @start_pos = @cursor.dup
-    raise NoPiece.new("\n\nNo piece there! ") if @board[@start_pos].nil?
-    raise NotYours.new("\n\nThat's not your piece! ") if @board[@start_pos].color != turn
-    toggle_grabbing
-    @board.move(@start_pos, @end_pos) unless @grabbing
+  def render_grid
+    (0..7).each do |x|
+      print BOARD_ROWS[x].colorize(:white)
+      (0..7).each do |y|
+        if @board[[x,y]].nil?
+          checkerboard(x,y)
+        else
+          render_piece(x,y)
+        end
+      end
+      puts BOARD_ROWS[x].colorize(:white)
+    end
   end
 
-  def read_char
-    STDIN.echo = false
-    STDIN.raw!
-    input = STDIN.getc.chr
-    if input == "\e" then
-      input << STDIN.read_nonblock(3) rescue nil
-      input << STDIN.read_nonblock(2) rescue nil
+  def checkerboard(x, y, text = " ")
+    if @player[:black].cursor == [x, y] || @player[:white].cursor == [x, y]
+      print text.colorize(:black).on_light_white
+    elsif @player[:black].start_pos == [x, y] && @player[:black].grabbing ||
+      @player[:white].start_pos == [x, y] && @player[:white].grabbing
+      print text.colorize(:light_white).on_black
+    elsif (x + y) % 2 == 0
+      print text.colorize(:black).on_white
+    else
+      print text.colorize(:black).on_light_black
     end
-  ensure
-    STDIN.echo = true
-    STDIN.cooked!
-    return input
   end
+
 
 end
 

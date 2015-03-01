@@ -29,7 +29,10 @@ class Pawn < Piece
     row, col = @pos[0], @pos[1]
 
     moves << [row + 1 * forward_dir, col]
-    moves << [row + 2 * forward_dir, col] if at_start_row?
+
+    if at_start_row? && @board[[row + 1 * forward_dir, col]].nil?
+      moves << [row + 2 * forward_dir, col]
+    end
 
     moves.select { |pos| @board.on_board?(pos) && @board[pos].nil? }
   end
